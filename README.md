@@ -1,5 +1,4 @@
 
-```markdown
 # User Management API
 
 This is a RESTful API built with Express.js for managing user data. It provides basic CRUD (Create, Read, Update, Delete) operations for user records.
