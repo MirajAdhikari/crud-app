@@ -1,4 +1,3 @@
-Here's a complete README.md file in a single, cohesive format for your GitHub repository:
 
 ```markdown
 # User Management API
