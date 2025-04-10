@@ -1,12 +1,37 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid'; // Importing UUID library to generate unique IDs
+import mysql from 'mysql2';
 
 const router = express.Router();
 
-// Sample data
-const users = [];
+// Database connection configuration
+const connection = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: 'root',
+    database: 'mydb'
+});
 
+// Connect to the database
+connection.connect((err) => {
+    if (err) {
+        console.error('Error connecting to the database: ' + err.stack);
+        return;
+    }
+    console.log('Connected to the database as ID ' + connection.threadId);
+});
 
+// Helper function to handle database queries
+function queryDatabase(query, values, callback) {
+    connection.query(query, values, (error, results) => {
+        if (error) {
+            console.error('Database error:', error);
+            callback(error, null);
+        } else {
+            callback(null, results);
+        }
+    });
+}
 
 // Adding a new user
 router.post('/', (req, res) => {
@@ -17,98 +42,168 @@ router.post('/', (req, res) => {
         return res.status(400).json({ message: "First name, last name, and email are required!" });
     }
 
-    // Creating a new user object with a unique ID
-    const newUser = { ...user, id: uuidv4() };
+    // Generate a unique ID for the user
+    const userId = uuidv4();
 
-    // Adding the new user to the `users` array
-    users.push(newUser);
+    // SQL query to insert a new user into the database
+    const query = `
+        INSERT INTO users (id, first_name, last_name, email)
+        VALUES (?, ?, ?, ?)
+    `;
+    const values = [userId, user.first_name, user.last_name, user.email];
 
-    // Responding with a success message and the newly created user object
-    res.json({ message: `${user.first_name} has been added to the database`, user: newUser });
+    // Execute the query
+    queryDatabase(query, values, (error, results) => {
+        if (error) {
+            return res.status(500).json({ message: "An error occurred while adding the user.", error: error.message });
+        }
+
+        // Respond with a success message and the newly created user object
+        const newUser = { id: userId, ...user };
+        res.json({ message: `${user.first_name} has been added to the database`, user: newUser });
+    });
 });
-
-
 
 // Fetch data of all users
 router.get('/users', (req, res) => {
-    // Checking if the `users` array is empty
-    if (users.length === 0) {
-        return res.status(404).json({ message: "No users found" });
-    }
+    // SQL query to fetch all users from the database
+    const query = `
+        SELECT * FROM users
+    `;
 
-    // Responding with the list of all users
-    res.json(users);
+    // Execute the query
+    queryDatabase(query, [], (error, results) => {
+        if (error) {
+            return res.status(500).json({ message: "An error occurred while fetching users.", error: error.message });
+        }
+
+        // Check if any users were found
+        if (results.length === 0) {
+            return res.status(404).json({ message: "No users found" });
+        }
+
+        // Respond with the list of all users
+        res.json(results);
+    });
 });
 
-
-
-// Fetch data of specific user
+// Fetch data of a specific user
 router.get('/users/:id', (req, res) => {
     const { id } = req.params; // Extracting the `id` parameter from the URL
 
-    // Searching for the user with the matching ID
-    const user = users.find((u) => u.id === id);
+    // SQL query to fetch a specific user by ID
+    const query = `
+        SELECT * FROM users WHERE id = ?
+    `;
+    const values = [id];
 
-    // Responding with a 404 error if the user is not found
-    if (!user) {
-        return res.status(404).json({ message: "User not found" });
-    }
+    // Execute the query
+    queryDatabase(query, values, (error, results) => {
+        if (error) {
+            return res.status(500).json({ message: "An error occurred while fetching the user.", error: error.message });
+        }
 
-    // Responding with the user object if found
-    res.json(user);
+        // Check if the user was found
+        if (results.length === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Respond with the user object if found
+        res.json(results[0]);
+    });
 });
-
-
 
 // Delete data of a user
 router.delete('/:id', (req, res) => {
     const { id } = req.params; // Extracting the `id` parameter from the URL
 
-    // Finding the index of the user with the matching ID
-    const userIndex = users.findIndex((u) => u.id === id);
+    // SQL query to delete a user by ID
+    const query = `
+        DELETE FROM users WHERE id = ?
+    `;
+    const values = [id];
 
-    // Responding with a 404 error if the user is not found
-    if (userIndex === -1) {
-        return res.status(404).json({ message: "User not found" });
-    }
+    // Execute the query
+    queryDatabase(query, values, (error, results) => {
+        if (error) {
+            return res.status(500).json({ message: "An error occurred while deleting the user.", error: error.message });
+        }
 
-    // Removing the user from the `users` array
-    users.splice(userIndex, 1);
+        // Check if any rows were affected (i.e., if the user existed)
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
 
-    // Responding with a success message
-    res.json({ message: `User with ID ${id} has been deleted` });
+        // Respond with a success message
+        res.json({ message: `User with ID ${id} has been deleted` });
+    });
 });
-
-
 
 // Update data of a user
 router.patch('/users/:id', (req, res) => {
     const { id } = req.params; // Extract the user ID from the URL
     const { first_name, last_name, email } = req.body; // Extract fields to update from the request body
 
-    // Find the index of the user in the array
-    const userIndex = users.findIndex((user) => user.id === id);
+    // SQL query to update the user in the database
+    let setClause = '';
+    const values = [];
+    let hasUpdates = false;
 
-    // Check if the user exists
-    if (userIndex === -1) {
-        return res.status(404).json({ message: "User not found" });
+    // Dynamically build the SET clause based on which fields are provided
+    if (first_name) {
+        setClause += 'first_name = ?, ';
+        values.push(first_name);
+        hasUpdates = true;
+    }
+    if (last_name) {
+        setClause += 'last_name = ?, ';
+        values.push(last_name);
+        hasUpdates = true;
+    }
+    if (email) {
+        setClause += 'email = ?, ';
+        values.push(email);
+        hasUpdates = true;
     }
 
-    // Create a new user object with updated fields
-    const updatedUser = {
-        ...users[userIndex], // Copy existing user data
-        first_name: first_name || users[userIndex].first_name, // Update first_name if provided
-        last_name: last_name || users[userIndex].last_name, // Update last_name if provided
-        email: email || users[userIndex].email, // Update email if provided
-    };
+    // Remove trailing comma and space from the SET clause
+    setClause = setClause.slice(0, -2);
 
-    // Replace the old user with the updated user in the array
-    users[userIndex] = updatedUser;
+    // If no fields were provided, respond with an error
+    if (!hasUpdates) {
+        return res.status(400).json({ message: "No fields provided for update" });
+    }
 
-    // Respond with the updated user data
-    res.json({
-        message: `User with the ID ${id} has been updated.`,
-        user: updatedUser,
+    // Append the WHERE clause to the query
+    setClause += ' WHERE id = ?';
+    values.push(id);
+
+    // Execute the query
+    queryDatabase(setClause, values, (error, results) => {
+        if (error) {
+            return res.status(500).json({ message: "An error occurred while updating the user.", error: error.message });
+        }
+
+        // Check if any rows were affected (i.e., if the user existed)
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Fetch the updated user data from the database
+        const getUserQuery = `
+            SELECT * FROM users WHERE id = ?
+        `;
+        queryDatabase(getUserQuery, [id], (getError, getResults) => {
+            if (getError) {
+                return res.status(500).json({ message: "An error occurred while fetching the updated user.", error: getError.message });
+            }
+
+            // Respond with the updated user data
+            res.json({
+                message: `User with the ID ${id} has been updated.`,
+                user: getResults[0],
+            });
+        });
     });
 });
 
