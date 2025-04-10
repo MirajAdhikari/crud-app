@@ -135,22 +135,3 @@ node app.js
 ---
 Created on April 09, 2025
 ```
-
-This README includes:
-- Project overview
-- Features list
-- Technology stack
-- Setup instructions
-- API endpoint documentation
-- Usage examples
-- Project structure
-- Running instructions
-- Notes for improvement
-- Contribution guidelines
-- License information
-
-You should:
-1. Replace `your-username` with your actual GitHub username
-2. Add a `LICENSE` file if you want to include licensing
-3. Adjust any paths or details specific to your implementation
-4. Add any additional sections you think are relevant (e.g., testing instructions)
